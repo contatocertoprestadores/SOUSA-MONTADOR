@@ -198,6 +198,20 @@ export default function App(){
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
   const [reviews, setReviews] = useState<Review[]>(SAMPLE_REVIEWS);
+  const [coupons, setCoupons] = useState<Coupon[]>(()=>{
+    try{
+      const saved = typeof window!=='undefined' ? localStorage.getItem('sm_coupons_v2') : null;
+      if(saved){ const p=JSON.parse(saved); if(p.length>0) return p; }
+    }catch{}
+    return [{ id: 'c1', code: 'BOASVINDAS10', discountType: 'percent' as const, value: 10, active: true, createdAt: new Date().toISOString().slice(0,10), usageCount: 0, description: '10% OFF no APP' }];
+  });
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon|null>(null);
+  const [couponInput, setCouponInput] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [editingCoupon, setEditingCoupon] = useState<Coupon|null>(null);
+  const [couponForm, setCouponForm] = useState<Partial<Coupon>>({ code: '', discountType: 'percent', value: 10, active: true });
+  const [showCouponModal, setShowCouponModal] = useState(false);
+
 
   const [view, setView] = useState('inicio');
   const [isAppInstalled, setIsAppInstalled] = useState(false);
@@ -259,6 +273,7 @@ export default function App(){
   useEffect(()=>{ localStorage.setItem('sm_config_v2', JSON.stringify(config)); },[config]);
   useEffect(()=>{ localStorage.setItem('sm_reviews_v2', JSON.stringify(reviews)); },[reviews]);
   useEffect(()=>{ localStorage.setItem('sm_sound', String(soundEnabled)); },[soundEnabled]);
+  useEffect(()=>{ try{ localStorage.setItem('sm_coupons_v2', JSON.stringify(coupons)); }catch{} },[coupons]);
 
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -1502,9 +1517,7 @@ export default function App(){
 
       
       
-              <button id="pwa-install-btn" onClick={handlePwaInstall} className="w-16 h-16 rounded-[20px] bg-gradient-to-br from-[#f5d76e] to-[#d4af37] border-none shadow-[0_8px_24px_rgba(212,175,55,0.4)] grid place-items-center cursor-pointer animate-pulse">
-          <span className="text-[28px]">📲</span>
-        </button>
+              
       </div>
 
       <footer className="border-t border-white/10 py-8 text-center text-[11px] text-white/30 tracking-wide relative">
