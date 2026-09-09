@@ -1,0 +1,46 @@
+{
+  "name": "Sousa Montagens - Montador Premium",
+  "short_name": "Sousa Montagens",
+  "description": "Montagem e desmontagem de m\u00f3veis em Assis, Tarum\u00e3 e regi\u00e3o. Or\u00e7amento r\u00e1pido via WhatsApp. Sem pagamento antecipado.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#d4af37",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Solicitar Or\u00e7amento",
+      "url": "/?action=orcamento",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Meus Agendamentos",
+      "url": "/?view=meus-agendamentos",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
