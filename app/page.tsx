@@ -1515,11 +1515,6 @@ export default function App(){
         </div>
       )}
 
-      
-      
-              
-      </div>
-
       <footer className="border-t border-white/10 py-8 text-center text-[11px] text-white/30 tracking-wide relative">
         <div className="max-w-[1280px] mx-auto px-4">
           <div onClick={handleLogoTap} className="cursor-pointer select-none">
