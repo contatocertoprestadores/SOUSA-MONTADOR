@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Clock, DollarSign, MapPin, Shield, Zap, Calendar, Phone,
   Search, Plus, Trash2, X, Check, ChevronRight, Menu,
-  Settings, Wallet, Hammer, Package,
+  Settings, Wallet, Hammer, Package, Lock,
   MessageCircle, ArrowRight, Star, Award, Timer,
   Volume2, VolumeX, Bell, CheckCircle2, LogOut
 } from 'lucide-react';
@@ -66,6 +66,7 @@ type Quote = {
   date: string;
 };
 type Config = { pixKey: string; pixName: string; pixBank: string; whatsappMsg: string; atendimento: string; };
+type Coupon = { id: string; code: string; discountType: 'percent'|'fixed'; value: number; minValue?: number; active: boolean; createdAt: string; usageCount: number; description?: string };
 type Review = { id: string; appointmentId: string; clientName: string; phone: string; rating: number; comment: string; date: string; serviceNames: string };
 
 const INITIAL_REVIEWS: Review[] = [
@@ -199,7 +200,8 @@ export default function App(){
   const [reviews, setReviews] = useState<Review[]>(SAMPLE_REVIEWS);
 
   const [view, setView] = useState('inicio');
-  const [isPro, setIsPro] = useState(false);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+  const [isPro, setIsPro] = useState(()=>{ try{ return typeof window!=='undefined' && localStorage.getItem('sm_isPro')==='true'; }catch{ return false; } });
   const [mobileMenu, setMobileMenu] = useState(false);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('TODOS');
@@ -232,7 +234,7 @@ export default function App(){
   const carouselRef = useRef<HTMLDivElement>(null);
 
   const logoTapsRef = useRef<number[]>([]);
-  const proViews = ['orcamentos','agendamentos','avaliacoes','financeiro','clientes','config'];
+  const proViews = ['orcamentos','agendamentos','avaliacoes','financeiro','clientes','cupons','config'];
 
   useEffect(()=>{
     if(!isPro && proViews.includes(view)){
@@ -251,17 +253,6 @@ export default function App(){
     }catch{}
     if('Notification' in window && Notification.permission==='default'){ Notification.requestPermission().catch(()=>{}); }
   },[]);
-
-  useEffect(()=>{
-    try{
-      if('serviceWorker' in navigator){
-        navigator.serviceWorker.register('/sw.js').then(reg=>{
-          console.log('SW registered', reg.scope);
-        }).catch(err=> console.log('SW fail', err));
-      }
-    }catch{}
-  },[]);
-
   useEffect(()=>{ localStorage.setItem('sm_clients_v2', JSON.stringify(clients)); },[clients]);
   useEffect(()=>{ localStorage.setItem('sm_appointments_v2', JSON.stringify(appointments)); },[appointments]);
   useEffect(()=>{ localStorage.setItem('sm_quotes_v2', JSON.stringify(quotes)); },[quotes]);
@@ -269,7 +260,59 @@ export default function App(){
   useEffect(()=>{ localStorage.setItem('sm_reviews_v2', JSON.stringify(reviews)); },[reviews]);
   useEffect(()=>{ localStorage.setItem('sm_sound', String(soundEnabled)); },[soundEnabled]);
 
+
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBubble, setShowInstallBubble] = useState(false);
+  useEffect(()=>{
+    const handler = (e:any)=>{ e.preventDefault(); setDeferredPrompt(e); setShowInstallBubble(true); setTimeout(()=>setShowInstallBubble(false), 6000); };
+    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', ()=>{ setDeferredPrompt(null); setShowInstallBubble(false); try{ localStorage.setItem('sm_app_installed','true'); setIsAppInstalled(true);}catch{} showToast('App instalado!'); });
+    return ()=> window.removeEventListener('beforeinstallprompt', handler);
+  },[]);
+  const handlePwaInstall = async ()=>{
+    if(deferredPrompt){ deferredPrompt.prompt(); const {outcome}=await deferredPrompt.userChoice; if(outcome==='accepted'){ setDeferredPrompt(null); setShowInstallBubble(false); showToast('Instalando...'); } }
+    else { const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent); showToast(isIOS?'iPhone: Compartilhar > Adicionar a Tela Inicio':'Chrome: Menu > Instalar app'); setShowInstallBubble(true); setTimeout(()=>setShowInstallBubble(false),8000); }
+  };
+
   const showToast = (msg:string)=>{ setToast(msg); setTimeout(()=>setToast(null),3000); };
+
+
+  const handleApplyCoupon = () => {
+    const code = couponInput.trim().toUpperCase();
+    if(code==='BOASVINDAS10' && !isAppInstalled){
+      showToast('⚠️ Cupom só válido no APP instalado');
+      return;
+    }
+    if(!code){ showToast('Digite o cupom'); return; }
+    const found = coupons.find(c => c.code.toUpperCase()===code && c.active);
+    if(!found){ showToast('Cupom inválido'); return; }
+    let disc = found.discountType==='percent' ? totalRequestSubtotal*found.value/100 : found.value;
+    if(disc>totalRequestSubtotal) disc=totalRequestSubtotal;
+    setAppliedCoupon(found);
+    setCouponDiscount(disc);
+    setCoupons(prev=> prev.map(c=> c.id===found.id ? {...c, usageCount: c.usageCount+1} : c));
+    showToast(`Cupom aplicado: -R$${disc.toFixed(2)}`);
+  };
+  const handleRemoveCoupon = () => { setAppliedCoupon(null); setCouponDiscount(0); setCouponInput(''); };
+  const handleSaveCoupon = () => {
+    if(!couponForm.code || !couponForm.value){ showToast('Preencha código e valor'); return; }
+    const code = couponForm.code!.trim().toUpperCase();
+    if(editingCoupon){
+      setCoupons(prev=> prev.map(c=> c.id===editingCoupon.id ? {...c, ...couponForm, code, id: editingCoupon.id } as Coupon : c));
+      showToast('Cupom atualizado');
+    } else {
+      if(coupons.some(c=> c.code.toUpperCase()===code)){ showToast('Código já existe'); return; }
+      const newC: Coupon = { id: Date.now().toString(), code, discountType: (couponForm.discountType as any)||'percent', value: Number(couponForm.value), minValue: couponForm.minValue?Number(couponForm.minValue):undefined, active: couponForm.active!==false, createdAt: new Date().toISOString().slice(0,10), usageCount: 0, description: couponForm.description };
+      setCoupons(prev=>[newC, ...prev]);
+      showToast('Cupom criado');
+    }
+    setEditingCoupon(null);
+    setShowCouponModal(false);
+    setCouponForm({ code: '', discountType: 'percent', value: 10, active: true });
+  };
+  const handleEditCoupon = (c: Coupon) => { setEditingCoupon(c); setCouponForm(c); setShowCouponModal(true); };
+  const handleDeleteCoupon = (id: string) => { if(confirm('Excluir cupom?')){ setCoupons(prev=> prev.filter(c=> c.id!==id)); showToast('Cupom excluído'); } };
+  const handleToggleCoupon = (id: string) => { setCoupons(prev=> prev.map(c=> c.id===id ? {...c, active: !c.active} : c)); };
 
   const playBip = () => {
     if(!soundEnabled) return;
@@ -468,7 +511,7 @@ export default function App(){
       window.scrollTo({top:0, behavior:'smooth'});
     }
   };
-  const handlePasswordSubmit = ()=>{
+  const handlePasswordSubmit = ()=>{ console.log('Trying password', passwordInput);
     if(passwordInput==='20112024'){
       setIsPro(true);
       setShowPasswordModal(false);
@@ -481,6 +524,8 @@ export default function App(){
   };
   const handleExitPro = ()=>{
     setIsPro(false);
+    try{ localStorage.removeItem('sm_isPro'); }catch{}
+
     setView('inicio');
     setMobileMenu(false);
     showToast('Saiu do modo profissional');
@@ -518,12 +563,13 @@ export default function App(){
     {k:'avaliacoes', l:'Avaliações'},
     {k:'financeiro', l:'Financeiro'},
     {k:'clientes', l:'Clientes'},
+    {k:'cupons', l:'Cupons'},
     {k:'config', l:'Config'},
   ];
   const currentNav = isPro ? navPro : navClient;
 
   return (
-    <div className="min-h-screen bg-[#080808] text-white selection:bg-[#d4af37]/30 font-[Inter,system-ui]">
+    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#080808] text-white selection:bg-[#d4af37]/30 font-[Inter,system-ui] box-border">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap');
         *{font-family:Inter,system-ui}
@@ -539,9 +585,9 @@ export default function App(){
         @keyframes slideUp{from{transform:translate(-50%,20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
       `}</style>
 
-      <header className="fixed top-0 inset-x-0 z-50 glass border-b border-white/[0.08]">
+      <header className="fixed top-0 inset-x-0 z-50 glass border-b border-white/[0.08] w-full max-w-[100vw] box-border">
         <div className="max-w-[1280px] mx-auto px-4 md:px-6 h-[68px] flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer select-none" onClick={handleLogoTap}>
+          <div className="flex items-center gap-3 cursor-pointer select-none min-w-0" onClick={handleLogoTap}>
             <div className="w-10 h-10 rounded-[10px] bg-[#111] gold-border flex items-center justify-center relative">
               <div className="absolute inset-[1px] rounded-[9px] bg-gradient-to-br from-[#222] to-[#0a0a0a]" />
               <Hammer className="w-5 h-5 text-[#d4af37] relative z-10" />
@@ -590,17 +636,17 @@ export default function App(){
         )}
       </header>
 
-      <main className="pt-[68px]">
+      <main className="pt-[68px] w-full max-w-[100vw] overflow-x-hidden box-border">
         {view==='inicio' && (
           <>
-            <section className="relative min-h-[88vh] flex items-center overflow-hidden">
+            <section className="relative min-h-[88vh] flex items-center overflow-hidden w-full max-w-[100vw] box-border">
               <div className="absolute inset-0">
                 <img src="/hero.jpg" alt="Sousa Montagens hero" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-[#080808]/85" />
                 <div className="absolute inset-0 bg-gradient-to-r from-[#080808] via-[#080808]/80 to-[#080808]/30" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#080808] via-transparent to-transparent" />
               </div>
-              <div className="relative max-w-[1280px] mx-auto px-4 md:px-6 py-16 md:py-24 w-full grid lg:grid-cols-[1.1fr_0.9fr] gap-10 items-center">
+              <div className="relative max-w-[1280px] mx-auto px-4 md:px-6 py-16 md:py-24 w-full box-border grid lg:grid-cols-[1.1fr_0.9fr] gap-10 items-center min-w-0">
                 <div>
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1c1c1c] gold-border text-[11px] tracking-widest text-[#d4af37] font-bold mb-6">
                     <Star className="w-3.5 h-3.5" /> ATENDIMENTO PREMIUM EM ASSIS E REGIÃO
@@ -620,11 +666,11 @@ export default function App(){
                     <strong>Você não paga nada antes.</strong> Pagamento somente após conclusão do serviço • PIX ou dinheiro
                   </div>
                   
-                  <div className="mt-6 w-full max-w-[560px] relative overflow-hidden rounded-[20px] bg-gradient-to-br from-[#d4af37] via-[#f5d76e] to-[#b8941f] p-[1.5px]">
+                  <div className="mt-6 w-full max-w-[560px] box-border relative overflow-hidden rounded-[20px] bg-gradient-to-br from-[#d4af37] via-[#f5d76e] to-[#b8941f] p-[1.5px]">
                     <div className="rounded-[18px] bg-[#0a0a0a] p-4 flex items-center gap-4">
                       <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#f5d76e] to-[#d4af37] grid place-items-center shrink-0 animate-pulse"><span className="text-2xl">📲</span></div>
                       <div className="flex-1 min-w-0"><div className="text-[11px] font-black tracking-[0.15em] text-[#d4af37]">BAIXE NOSSO APP E GANHE</div><div className="font-display font-black text-[22px] md:text-[26px] leading-none text-white">10% DE DESCONTO</div><div className="text-[11px] text-white/60 mt-0.5 truncate">em qualquer serviço • cupom liberado no app</div></div>
-                      <button onClick={()=>{ const btn=document.getElementById('pwa-install-btn'); if(btn) btn.click(); }} className="shrink-0 h-10 px-5 rounded-full bg-white text-black text-[11px] font-black">BAIXAR APP</button>
+                      <button type="button" onClick={handlePwaInstall} className="shrink-0 h-10 px-5 rounded-full bg-white text-black text-[11px] font-black hover:bg-[#f5d76e] transition">BAIXAR APP</button>
                     </div>
                   </div>
 
@@ -638,7 +684,7 @@ export default function App(){
                     <button onClick={()=>setView('meus-agendamentos')} className="h-10 px-5 rounded-full bg-[#1a1a1a] gold-border text-[12px] font-bold tracking-wide hover:bg-[#222] transition">MEUS AGENDAMENTOS</button>
                     <a href="https://wa.me/5518991488302?text=Ol%C3%A1!%20Vim%20pelo%20site" target="_blank" rel="noopener" className="h-10 px-5 rounded-full bg-[#1a1a1a] gold-border text-[12px] font-bold tracking-wide hover:bg-[#222] transition flex items-center gap-2"><MessageCircle className="w-4 h-4 text-[#d4af37]" />FALAR COM MONTADOR</a>
                   </div>
-                  <div className="mt-10 grid grid-cols-2 md:grid-cols-3 gap-3 max-w-[560px]">
+                  <div className="mt-10 grid grid-cols-2 md:grid-cols-3 gap-3 max-w-[560px] w-full box-border">
                     {[
                       {icon:Shield, t:'Sem pagamento antecipado'},
                       {icon:Zap, t:'Orçamento via WhatsApp'},
@@ -647,7 +693,7 @@ export default function App(){
                       {icon:MapPin, t:'Atendimento residencial'},
                       {icon:Award, t:'Desmontagem + 10% OFF'},
                     ].map(card=>(
-                      <div key={card.t} className="card-glass rounded-[16px] p-3.5 flex items-center gap-2.5">
+                      <div key={card.t} className="card-glass rounded-[16px] p-3.5 flex items-center gap-2.5 min-w-0 box-border overflow-hidden">
                         <div className="w-9 h-9 rounded-full gold-bg grid place-items-center shrink-0"><card.icon className="w-4 h-4 text-black" /></div>
                         <div className="text-[12px] font-semibold leading-tight text-white/90">{card.t}</div>
                       </div>
@@ -899,6 +945,7 @@ export default function App(){
                   </div>
                   <div className="flex gap-2">
                     <button onClick={()=>setShowQuoteView(q)} className="h-9 px-4 rounded-full bg-white text-black text-xs font-bold">VER</button>
+                    <a href={`https://wa.me/55${q.client.telefone?.replace(/\D/g,'')||'5518991488302'}?text=${encodeURIComponent(`Olá ${q.client.nome||'Cliente'}! 🛠️\n\nAqui é *Sousa Montagens*\n\n*ORÇAMENTO ${q.number}*\n\n${q.items.map(i=>`• ${i.service.name} x${i.qty} = R$${i.subtotal.toFixed(2)}`).join('\n')}\n\n*TOTAL: R$${q.total.toFixed(2)}*\n\n${q.observacoes?`Obs: ${q.observacoes}\n\n`:''}Validade: 7 dias\nPagamento somente após conclusão\n\nPosso agendar?`)}`} target="_blank" rel="noopener" className="h-9 px-4 rounded-full bg-[#25D366] text-black text-xs font-bold flex items-center gap-1"><MessageCircle className="w-3 h-3" /> WHATSAPP</a>
                   </div>
                 </div>
               ))}
@@ -1095,6 +1142,57 @@ export default function App(){
           </div>
         )}
 
+        
+        {isPro && view==='cupons' && (
+          <div className="max-w-[1100px] mx-auto px-4 md:px-6 py-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="font-display text-3xl font-extrabold">Cupons</h2>
+                <div className="text-xs text-white/50 mt-1">Gerencie cupons de desconto • BOASVINDAS10 só funciona no app</div>
+              </div>
+              <button onClick={()=>{ setEditingCoupon(null); setCouponForm({ code: '', discountType: 'percent', value: 10, active: true }); setShowCouponModal(true); }} className="h-11 px-6 rounded-full btn-gold text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> NOVO CUPOM</button>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {coupons.map(c=>(
+                <div key={c.id} className="card-glass rounded-[18px] p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="font-mono font-bold text-[#d4af37] text-lg">{c.code}</div>
+                      <div className="text-xs text-white/50 mt-1">{c.description||''} • {c.discountType==='percent'?`${c.value}% OFF`:`R$${c.value} OFF`} {c.minValue?`• Min R$${c.minValue}`:''}</div>
+                      <div className="text-[11px] text-white/30 mt-2">Criado {c.createdAt} • Usos: {c.usageCount} • {c.active?'ATIVO':'INATIVO'}</div>
+                    </div>
+                    <button onClick={()=>handleToggleCoupon(c.id)} className={`w-12 h-6 rounded-full p-0.5 transition ${c.active?'bg-[#d4af37]':'bg-white/10'}`}><div className={`w-5 h-5 rounded-full bg-white transition ${c.active?'translate-x-6':'translate-x-0'}`} /></button>
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <button onClick={()=>handleEditCoupon(c)} className="flex-1 h-9 rounded-full bg-white/10 border border-white/10 text-xs font-bold">EDITAR</button>
+                    <button onClick={()=>handleDeleteCoupon(c.id)} className="h-9 px-4 rounded-full bg-red-500/20 text-red-300 border border-red-500/20 text-xs font-bold">EXCLUIR</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {coupons.length===0 && <div className="text-center py-12 text-white/40 text-sm">Nenhum cupom criado</div>}
+            {showCouponModal && (
+              <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+                <div className="absolute inset-0 bg-black/80 backdrop-blur" onClick={()=>setShowCouponModal(false)} />
+                <div className="relative w-full max-w-[420px] rounded-[24px] bg-[#101010] border border-white/10 p-6">
+                  <div className="font-bold text-lg mb-4">{editingCoupon?'Editar Cupom':'Novo Cupom'}</div>
+                  <div className="space-y-3">
+                    <input placeholder="Código (ex: DESC10)" value={couponForm.code||''} onChange={e=>setCouponForm({...couponForm, code:e.target.value.toUpperCase()})} className="w-full h-11 px-4 rounded-xl bg-[#181818] border border-white/10 text-sm" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={couponForm.discountType as any} onChange={e=>setCouponForm({...couponForm, discountType:e.target.value as any})} className="h-11 px-4 rounded-xl bg-[#181818] border border-white/10 text-sm"><option value="percent">% Porcentagem</option><option value="fixed">R$ Fixo</option></select>
+                      <input type="number" placeholder="Valor" value={couponForm.value as any||''} onChange={e=>setCouponForm({...couponForm, value:Number(e.target.value)})} className="h-11 px-4 rounded-xl bg-[#181818] border border-white/10 text-sm" />
+                    </div>
+                    <input type="number" placeholder="Pedido mínimo (opcional)" value={couponForm.minValue as any||''} onChange={e=>setCouponForm({...couponForm, minValue:e.target.value?Number(e.target.value):undefined})} className="w-full h-11 px-4 rounded-xl bg-[#181818] border border-white/10 text-sm" />
+                    <input placeholder="Descrição (opcional)" value={couponForm.description||''} onChange={e=>setCouponForm({...couponForm, description:e.target.value})} className="w-full h-11 px-4 rounded-xl bg-[#181818] border border-white/10 text-sm" />
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={couponForm.active!==false} onChange={e=>setCouponForm({...couponForm, active:e.target.checked})} className="accent-[#d4af37]" /> Ativo</label>
+                  </div>
+                  <div className="mt-6 flex gap-2"><button onClick={handleSaveCoupon} className="flex-1 h-11 rounded-full btn-gold text-sm font-bold">{editingCoupon?'SALVAR':'CRIAR CUPOM'}</button><button onClick={()=>setShowCouponModal(false)} className="h-11 px-5 rounded-full bg-[#1a1a1a] border border-white/10 text-sm">CANCELAR</button></div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {isPro && view==='config' && (
           <div className="max-w-[720px] mx-auto px-4 md:px-6 py-8">
             <h2 className="font-display text-3xl font-extrabold mb-6">Configurações (PRO)</h2>
@@ -1112,7 +1210,7 @@ export default function App(){
           </div>
         )}
 
-        {!isPro && ['orcamentos','agendamentos','avaliacoes','financeiro','clientes','config'].includes(view) && (
+        {!isPro && ['orcamentos','agendamentos','avaliacoes','financeiro','clientes','cupons','config'].includes(view) && (
           <div className="max-w-[600px] mx-auto px-4 py-20 text-center">
             <div className="card-glass rounded-[24px] p-8">
               <Lock className="w-10 h-10 mx-auto text-[#d4af37]" />
@@ -1312,11 +1410,11 @@ export default function App(){
       )}
 
       {showPasswordModal && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/80 backdrop-blur" onClick={()=>setShowPasswordModal(false)} />
           <div className="relative w-full max-w-[380px] rounded-[24px] bg-[#101010] border border-white/10 p-6">
             <div className="flex items-center gap-3 mb-5"><div className="w-10 h-10 rounded-full gold-bg grid place-items-center"><Lock className="w-5 h-5 text-black" /></div><div><div className="font-bold">Acesso Profissional</div><div className="text-xs text-white/50">Digite a senha para acessar painel PRO</div></div></div>
-            <input type="password" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} onKeyDown={e=> e.key==='Enter' && handlePasswordSubmit()} placeholder="Senha: 8302" className="w-full h-12 px-4 rounded-xl bg-[#181818] border border-white/10 text-sm focus:border-[#d4af37]/40 outline-none" autoFocus />
+            <input type="password" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} onKeyDown={e=> e.key==='Enter' && handlePasswordSubmit()} placeholder="Digite a senha" className="w-full h-12 px-4 rounded-xl bg-[#181818] border border-white/10 text-sm focus:border-[#d4af37]/40 outline-none" autoFocus />
             <div className="mt-4 flex gap-2">
               <button onClick={handlePasswordSubmit} className="flex-1 h-11 rounded-full btn-gold text-sm font-bold">ENTRAR</button>
               <button onClick={()=>setShowPasswordModal(false)} className="h-11 px-5 rounded-full bg-[#1a1a1a] border border-white/10 text-sm">CANCELAR</button>
@@ -1397,26 +1495,30 @@ export default function App(){
       )}
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] px-5 h-12 rounded-full bg-white text-black text-sm font-bold shadow-[0_12px_40px_rgba(0,0,0,0.4)] flex items-center gap-2" style={{animation:'slideUp .3s ease'}}>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] px-5 h-12 rounded-full bg-white text-black text-sm font-bold shadow-[0_12px_40px_rgba(0,0,0,0.4)] flex items-center gap-2" style={{animation:'slideUp .3s ease'}}>
           <div className="w-6 h-6 rounded-full gold-bg grid place-items-center"><Check className="w-4 h-4 text-black" /></div>{toast}
         </div>
       )}
 
-
-      {/* BOTAO FLUTUANTE DOWNLOAD APP - FIXO */}
-      <div id="pwa-install-container" className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2.5 items-end">
-        <div id="pwa-bubble" className="hidden bg-[#101010] border border-[#d4af37]/30 text-white p-3 rounded-2xl text-[13px] max-w-[240px] shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
-          <div className="font-black text-[#d4af37] mb-1">📲 Instale nosso app!</div>
-          <div className="opacity-80 text-xs leading-snug">Acesso rápido e ganhe 10% OFF no app!</div>
-        </div>
-        <button id="pwa-install-btn" className="w-16 h-16 rounded-[20px] bg-gradient-to-br from-[#f5d76e] to-[#d4af37] border-none shadow-[0_8px_24px_rgba(212,175,55,0.4)] grid place-items-center cursor-pointer animate-pulse">
+      
+      
+              <button id="pwa-install-btn" onClick={handlePwaInstall} className="w-16 h-16 rounded-[20px] bg-gradient-to-br from-[#f5d76e] to-[#d4af37] border-none shadow-[0_8px_24px_rgba(212,175,55,0.4)] grid place-items-center cursor-pointer animate-pulse">
           <span className="text-[28px]">📲</span>
         </button>
       </div>
 
-      <footer className="border-t border-white/10 py-8 text-center text-[11px] text-white/30 tracking-wide">
-        SOUSA MONTAGENS • Montador Premium • Assis • Tarumã • Região • (18) 99148-8302 • Sem pagamento antecipado • Pague só após serviço • Design preto & dourado premium
+      <footer className="border-t border-white/10 py-8 text-center text-[11px] text-white/30 tracking-wide relative">
+        <div className="max-w-[1280px] mx-auto px-4">
+          <div onClick={handleLogoTap} className="cursor-pointer select-none">
+            SOUSA MONTAGENS • Montador Premium • Assis • Tarumã • Região • (18) 99148-8302 • Sem pagamento antecipado • Pague só após serviço • Design preto & dourado premium
+          </div>
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <span className="opacity-50">© 2026 Sousa Montagens</span>
+            <button type="button" onClick={()=>{ setShowPasswordModal(true); setPasswordInput(''); }} className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] hover:bg-white/10 transition">ADM</button>
+          </div>
+        </div>
       </footer>
+
     </div>
   );
 }
