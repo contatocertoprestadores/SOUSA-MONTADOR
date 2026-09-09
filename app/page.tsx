@@ -284,10 +284,21 @@ export default function App(){
     window.addEventListener('appinstalled', ()=>{ setDeferredPrompt(null); setShowInstallBubble(false); try{ localStorage.setItem('sm_app_installed','true'); setIsAppInstalled(true);}catch{} showToast('App instalado!'); });
     return ()=> window.removeEventListener('beforeinstallprompt', handler);
   },[]);
-  const handlePwaInstall = async ()=>{
-    if(deferredPrompt){ deferredPrompt.prompt(); const {outcome}=await deferredPrompt.userChoice; if(outcome==='accepted'){ setDeferredPrompt(null); setShowInstallBubble(false); showToast('Instalando...'); } }
-    else { const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent); showToast(isIOS?'iPhone: Compartilhar > Adicionar a Tela Inicio':'Chrome: Menu > Instalar app'); setShowInstallBubble(true); setTimeout(()=>setShowInstallBubble(false),8000); }
-  };
+  const handlePwaInstall = () => {
+  // Baixa APK direto
+  const link = document.createElement('a');
+  link.href = '/sousa-montagens.apk';
+  link.download = 'Sousa-Montagens.apk';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast('📥 Baixando app... Instale após download!');
+
+  // Opcional: também tenta PWA se quiser
+  if(deferredPrompt){
+    setTimeout(()=> deferredPrompt.prompt(), 1000);
+  }
+};
 
   const showToast = (msg:string)=>{ setToast(msg); setTimeout(()=>setToast(null),3000); };
 
