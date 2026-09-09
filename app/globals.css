@@ -1,0 +1,13 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap');
+html,body{ background:#050505; color:#fff; font-family:Montserrat,system-ui,sans-serif; }
+.font-display{ font-family:Montserrat,system-ui,sans-serif; }
+.gold-bg{ background: linear-gradient(135deg,#f5d76e 0%,#d4af37 50%,#b8941f 100%); }
+.btn-gold{ background: linear-gradient(135deg,#f5d76e,#d4af37); color:#000; font-weight:800; transition:.2s; }
+.btn-gold:hover{ filter:brightness(1.1); transform:translateY(-1px); }
+*::-webkit-scrollbar{ width:6px; height:6px; }
+*::-webkit-scrollbar-thumb{ background:#d4af3733; border-radius:999px; }
+@keyframes slideUp{ from{ transform:translate(-50%,20px); opacity:0 } to{ transform:translate(-50%,0); opacity:1 } }
