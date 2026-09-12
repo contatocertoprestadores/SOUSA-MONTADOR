@@ -40,7 +40,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <link rel="icon" type="image/png" href="/icons/icon-192.png" />
       </head>
-      <body>{children}</body>
+      <body>
+        <Tracker />
+        {children}
+      </body>
     </html>
   );
 }
