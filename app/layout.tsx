@@ -1,3 +1,4 @@
+import Tracker from '@/components/Tracker'
 import "./globals.css";
 export const metadata = {
   title: "Sousa Montagens - Montador de Móveis Premium | Assis e Tarumã",
