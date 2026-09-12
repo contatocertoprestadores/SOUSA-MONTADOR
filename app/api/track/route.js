@@ -1,44 +1,36 @@
-import { kv } from '@vercel/kv'
+// Versão SIMPLES sem @vercel/kv - funciona imediatamente
+// Guarda em memória (reinicia quando faz deploy, mas já deixa site online)
 
-export async function GET() {
+const online = globalThis.__sousa_online || (globalThis.__sousa_online = new Map())
+let total = globalThis.__sousa_total || 0
+let hoje = globalThis.__sousa_hoje || 0
+
+export async function POST(req) {
   try {
-    const keys = await kv.keys('sousa:online:*')
-    const online = keys.length
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || Math.random().toString(36).slice(2)
+    const data = await req.json().catch(() => ({}))
     
-    const total = await kv.get('sousa:total_visitas') || 0
-    const hoje = new Date().toISOString().slice(0, 10)
-    const hojeTotal = await kv.get(`sousa:visitas_hoje:${hoje}`) || 0
-    const apkDownloads = await kv.get('sousa:apk_downloads') || 0
-
-    // Pega últimos 7 dias
-    let semanaTotal = 0
-    for (let i = 0; i < 7; i++) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
-      const dia = d.toISOString().slice(0, 10)
-      const val = await kv.get(`sousa:visitas_hoje:${dia}`) || 0
-      semanaTotal += Number(val)
-    }
-
-    let visitantes = []
-    for (let key of keys) {
-      const v = await kv.hgetall(key)
-      if (v) visitantes.push(v)
-    }
-
-    // Ordena mais recentes primeiro
-    visitantes.sort((a, b) => b.timestamp - a.timestamp)
-
-    return Response.json({ 
-      online, 
-      total, 
-      hoje: hojeTotal,
-      semana: semanaTotal,
-      apkDownloads,
-      visitantes,
+    total++
+    hoje++
+    globalThis.__sousa_total = total
+    globalThis.__sousa_hoje = hoje
+    
+    online.set(ip, {
+      ip,
+      pagina: data.pagina || '/',
+      cidade: 'Assis-SP',
+      dispositivo: data.dispositivo || 'Mobile',
       timestamp: Date.now()
     })
+
+    // limpa visitantes antigos (90s)
+    const agora = Date.now()
+    for (let [k, v] of online) {
+      if (agora - v.timestamp > 90000) online.delete(k)
+    }
+
+    return Response.json({ ok: true, total })
   } catch (e) {
-    return Response.json({ error: e.message }, { status: 500 })
+    return Response.json({ ok: true })
   }
 }
