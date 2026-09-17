@@ -4,23 +4,27 @@ import { useEffect, useState } from 'react'
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false)
   const [pass, setPass] = useState('')
-  const [data, setData] = useState({ onlineCount: 0, online: [], total: 0, recent: [] })
+  const [data, setData] = useState({ onlineCount: 0, online: [], total: 0, timestamp: 0 })
+  const [pedidosData, setPedidosData] = useState({ pedidos: [], total: 0 })
 
   useEffect(() => {
-    if (localStorage.getItem('sousa_admin') === 'ok') setAuthed(true)
+    if (typeof window !== 'undefined' && localStorage.getItem('sousa_admin') === 'ok') setAuthed(true)
   }, [])
 
   useEffect(() => {
     if (!authed) return
-    const fetchData = async () => {
+    const fetchAll = async () => {
       try {
-        const r = await fetch('/api/visitors', { cache: 'no-store' })
-        const j = await r.json()
-        setData(j)
+        const [r1, r2] = await Promise.all([
+          fetch('/api/visitors', { cache: 'no-store' }).then(r=>r.json()).catch(()=>({onlineCount:0,online:[],total:0})),
+          fetch('/api/pedidos', { cache: 'no-store' }).then(r=>r.json()).catch(()=>({pedidos:[],total:0}))
+        ])
+        setData(r1)
+        setPedidosData(r2)
       } catch {}
     }
-    fetchData()
-    const iv = setInterval(fetchData, 3000)
+    fetchAll()
+    const iv = setInterval(fetchAll, 3000)
     return () => clearInterval(iv)
   }, [authed])
 
@@ -33,57 +37,75 @@ export default function AdminPage() {
 
   if (!authed) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111', color: '#fff' }}>
-        <div style={{ background: '#222', padding: 30, borderRadius: 12, width: 320 }}>
-          <h2>Admin Sousa</h2>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0a', color: '#fff' }}>
+        <div style={{ background: '#1a1a1a', padding: 30, borderRadius: 12, width: 320, textAlign: 'center' }}>
+          <h2 style={{marginBottom:20}}>Sousa Montador - Admin</h2>
           <input type="password" placeholder="Senha" value={pass} onChange={e=>setPass(e.target.value)} 
-            style={{ width: '100%', padding: 10, marginTop: 10, borderRadius: 8, border: 'none' }} />
-          <button onClick={login} style={{ width: '100%', marginTop: 10, padding: 10, background: '#7A1F1F', color: '#fff', border: 'none', borderRadius: 8 }}>Entrar</button>
+            style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #333', background:'#222', color:'#fff' }} />
+          <button onClick={login} style={{ width: '100%', marginTop: 12, padding: 12, background: '#7A1F1F', color: '#fff', border: 'none', borderRadius: 8, cursor:'pointer' }}>Entrar</button>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f0f0f', color: '#fff', padding: 20, fontFamily: 'sans-serif' }}>
-      <h1>📊 Painel Tempo Real - Sousa Montador</h1>
-      <p>Atualiza a cada 3 segundos</p>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 15, marginTop: 20 }}>
-        <div style={{ background: '#1e1e1e', padding: 20, borderRadius: 12 }}>
-          <h3>🟢 ONLINE AGORA</h3>
-          <div style={{ fontSize: 42, fontWeight: 'bold', color: '#22c55e' }}>{data.onlineCount}</div>
-          <div>Site: {data.onlineSite} | App: {data.onlineApp}</div>
-        </div>
-        <div style={{ background: '#1e1e1e', padding: 20, borderRadius: 12 }}>
-          <h3>👁️ TOTAL VISITAS</h3>
-          <div style={{ fontSize: 42, fontWeight: 'bold' }}>{data.total}</div>
-        </div>
-        <div style={{ background: '#1e1e1e', padding: 20, borderRadius: 12 }}>
-          <h3>🕒 ÚLTIMA ATUALIZAÇÃO</h3>
-          <div>{new Date(data.timestamp || Date.now()).toLocaleTimeString('pt-BR')}</div>
-          <button onClick={()=>{localStorage.removeItem('sousa_admin'); location.reload()}} style={{ marginTop: 10, padding: '5px 10px' }}>Sair</button>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 30, background: '#1e1e1e', padding: 20, borderRadius: 12 }}>
-        <h3>Quem está online agora:</h3>
-        {data.online.length === 0 && <p style={{ color: '#888' }}>Nenhum visitante online no momento. Abra o site em outra aba pra testar.</p>}
-        {data.online.map(o => (
-          <div key={o.id} style={{ borderBottom: '1px solid #333', padding: '10px 0', display: 'flex', justifyContent: 'space-between' }}>
-            <span>📌 {o.page} | {o.source} | {o.city}</span>
-            <span style={{ color: '#888', fontSize: 12 }}>{Math.round((Date.now() - o.lastSeen)/1000)}s atrás</span>
+    <div style={{ minHeight: '100vh', background: '#0f0f0f', color: '#fff', padding: 20, fontFamily: 'system-ui' }}>
+      <div style={{maxWidth:1200, margin:'0 auto'}}>
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+          <div>
+            <h1 style={{margin:0}}>📊 Painel Tempo Real</h1>
+            <p style={{color:'#888', margin:'5px 0'}}>Atualiza a cada 3 segundos • Sousa Montador</p>
           </div>
-        ))}
-      </div>
-
-      <div style={{ marginTop: 20, background: '#1e1e1e', padding: 20, borderRadius: 12 }}>
-        <h3>Histórico recente:</h3>
-        {data.recent?.slice(0,20).map((r,i) => (
-          <div key={i} style={{ fontSize: 13, color: '#aaa', padding: '4px 0' }}>
-            {new Date(r.time || r.lastSeen).toLocaleString('pt-BR')} - {r.page} - {r.source}
+          <button onClick={()=>{localStorage.removeItem('sousa_admin'); location.reload()}} style={{padding:'8px 16px', background:'#222', color:'#fff', border:'1px solid #333', borderRadius:8}}>Sair</button>
+        </div>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 15, marginTop: 25 }}>
+          <div style={{ background: '#1a1a1a', padding: 20, borderRadius: 12, border:'1px solid #222' }}>
+            <div style={{color:'#888', fontSize:13}}>🟢 ONLINE AGORA</div>
+            <div style={{ fontSize: 48, fontWeight: 'bold', color: data.onlineCount>0?'#22c55e':'#666' }}>{data.onlineCount}</div>
+            <div style={{color:'#888', fontSize:13}}>Última atualização: {new Date(data.timestamp||Date.now()).toLocaleTimeString('pt-BR')}</div>
           </div>
-        ))}
+          <div style={{ background: '#1a1a1a', padding: 20, borderRadius: 12, border:'1px solid #222' }}>
+            <div style={{color:'#888', fontSize:13}}>👁️ TOTAL DE VISITAS</div>
+            <div style={{ fontSize: 48, fontWeight: 'bold' }}>{data.total}</div>
+            <div style={{color:'#888', fontSize:13}}>Desde o início</div>
+          </div>
+          <div style={{ background: '#1a1a1a', padding: 20, borderRadius: 12, border:'1px solid #222' }}>
+            <div style={{color:'#888', fontSize:13}}>📦 PEDIDOS RECEBIDOS</div>
+            <div style={{ fontSize: 48, fontWeight: 'bold', color:'#f59e0b' }}>{pedidosData.total}</div>
+            <div style={{color:'#888', fontSize:13}}>{pedidosData.pedidos.filter(p=>p.status==='novo').length} novos</div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 25, background: '#1a1a1a', padding: 20, borderRadius: 12, border:'1px solid #222' }}>
+          <h3 style={{marginTop:0}}>Quem está online agora ({data.onlineCount})</h3>
+          {data.online.length === 0 ? (
+            <div style={{color:'#666', padding:'20px 0', textAlign:'center'}}>
+              Nenhum visitante online no momento.<br/>
+              <small>Abra o site em outra aba anônima pra testar. Se aparecer aqui, o tempo real funcionou.</small>
+            </div>
+          ) : data.online.map(o => (
+            <div key={o.id} style={{ borderBottom: '1px solid #222', padding: '12px 0', display: 'flex', justifyContent: 'space-between', fontSize:14 }}>
+              <span>📌 <strong>{o.page}</strong> • {o.source} • {o.city}</span>
+              <span style={{ color: '#22c55e', fontSize: 12 }}>{Math.round((Date.now() - (o.lastSeen||0))/1000)}s atrás • ONLINE</span>
+            </div>
+          ))}
+        </div>
+
+        {pedidosData.pedidos.length > 0 && (
+          <div style={{ marginTop: 25, background: '#1a1a1a', padding: 20, borderRadius: 12, border:'1px solid #222' }}>
+            <h3 style={{marginTop:0}}>Últimos pedidos</h3>
+            {pedidosData.pedidos.slice(0,10).map(p => (
+              <div key={p.id} style={{ borderBottom: '1px solid #222', padding: '10px 0', fontSize:14 }}>
+                <strong>{p.servico}</strong> - R$ {p.valor} • {p.cidade} • {p.createdAtFormatted} • {p.source}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{marginTop:30, color:'#555', fontSize:12, textAlign:'center'}}>
+          Sistema em tempo real via Vercel KV (Redis) • Ping a cada 20s • Expira em 90s sem atividade
+        </div>
       </div>
     </div>
   )
