@@ -1,4 +1,6 @@
 'use client'
+export const dynamic = 'force-dynamic'
+
 import { useEffect, useState } from 'react'
 
 export default function AdminPage(){
@@ -7,7 +9,11 @@ export default function AdminPage(){
   const [data,setData]=useState({onlineCount:0,online:[],total:0})
   const [pedidos,setPedidos]=useState({pedidos:[],total:0})
 
-  useEffect(()=>{ if(localStorage.getItem('sousa_admin')==='ok') setAuthed(true)},[])
+  useEffect(()=>{
+    try {
+      if(typeof window!== 'undefined' && localStorage.getItem('sousa_admin')==='ok') setAuthed(true)
+    } catch {}
+  },[])
 
   useEffect(()=>{
     if(!authed) return
@@ -41,10 +47,7 @@ export default function AdminPage(){
       <h1>📊 Tempo Real - {data.onlineCount} online</h1>
       <p>Total visitas: {data.total} | Pedidos: {pedidos.total}</p>
       <div style={{marginTop:20,background:'#1a1a1a',padding:20,borderRadius:12}}>
-        {data.online.length===0
-         ?<p>Nenhum online. Abra o site em outra aba.</p>
-          :data.online.map(o=><div key={o.id} style={{padding:'8px 0',borderBottom:'1px solid #222'}}>{o.page} - {o.source} - {Math.round((Date.now()-o.lastSeen)/1000)}s atrás</div>)
-        }
+        {data.online.length===0? <p>Nenhum online. Abra o site em outra aba.</p> : data.online.map(o=><div key={o.id} style={{padding:'8px 0',borderBottom:'1px solid #222'}}>{o.page} - {o.source} - {Math.round((Date.now()-o.lastSeen)/1000)}s atrás</div>)}
       </div>
     </div>
   )
